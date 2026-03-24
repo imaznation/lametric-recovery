@@ -1,4 +1,5 @@
 # LaMetric Time Recovery
+n[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-yellow?logo=buy-me-a-coffee)](https://buymeacoffee.com/imaznation)
 
 **Bring a bricked LaMetric Time back to life via USB — no eMMC required.**
 
@@ -547,3 +548,11 @@ The original LaMetric Time firmware is proprietary and is not distributed with t
 - **sunxi community** — for the FEL tools, u-boot port, and comprehensive Allwinner documentation
 - **Allwinner** — for the A13 SoC with its invaluable FEL recovery mode
 - **LaMetric** — for building hardware worth recovering
+
+---
+
+## Support
+
+If this project helped you recover your LaMetric Time, consider buying me a coffee!
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-yellow?logo=buy-me-a-coffee&style=for-the-badge)](https://buymeacoffee.com/imaznation)
