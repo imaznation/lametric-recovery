@@ -16,29 +16,31 @@ I bought a LaMetric Time a few years back and loved it — it sat on my desk sho
 
 When I finally plugged it back in... nothing. Completely dead. No lights, no boot, no response. After some research, I realized the internal micro SD card had died — NAND flash loses its charge when left unpowered for extended periods, and years in a drawer was enough to corrupt it beyond recovery.
 
-Most people would throw it away. I decided to see if I could bring it back to life.
+Most people would throw it away. I decided to see if I could bring it back to life — with the help of [Claude Code](https://claude.ai/claude-code), Anthropic's AI coding agent.
 
 ### Down the Rabbit Hole
 
 The first breakthrough was discovering that with a dead storage device, the Allwinner A13 processor falls into **USB FEL mode** — a bare-metal recovery protocol baked into the chip's ROM. This meant I could talk to the processor directly over USB and load code into RAM.
 
-What followed was one of the deepest embedded reverse-engineering projects I've ever done:
+What followed was one of the deepest embedded reverse-engineering projects I've ever taken on. Working with Claude Code as my co-pilot, we went from zero documentation to a fully working system:
 
-**Week 1: Getting a heartbeat.** I started with nothing — no documentation for the LaMetric's hardware, no schematics, no source code. Online resources incorrectly identified the SoC as an R16/A33, but FEL told me it was actually an **Allwinner A13 (sun5i)**. I built a minimal u-boot from scratch, discovering that the stock video and LED drivers crash on LaMetric hardware and had to be disabled. After days of trial and error, I got a Linux 5.15 kernel booting from RAM — but with no display, no output, and no way to know if it was even running.
+**Week 1: Getting a heartbeat.** We started with nothing — no documentation for the LaMetric's hardware, no schematics, no source code. Online resources incorrectly identified the SoC as an R16/A33, but FEL told us it was actually an **Allwinner A13 (sun5i)**. Claude helped build a minimal u-boot from scratch, discovering that the stock video and LED drivers crash on LaMetric hardware and had to be disabled. After days of trial and error, we got a Linux 5.15 kernel booting from RAM — but with no display, no output, and no way to know if it was even running.
 
-**Week 2: First pixels.** The display is driven by an STM32 microcontroller that sits between the A13 and the LED matrix. I had to reverse-engineer the entire communication protocol — disassembling both the Linux kernel driver and the STM32 firmware to understand the SPI frame format, I2C commands, and the critical PE4 GPIO that switches between animation mode and direct pixel control. The moment I saw my first "HELLO" appear on the 37x8 LED matrix, I knew this was going to work.
+**Week 2: First pixels.** The display is driven by an STM32 microcontroller that sits between the A13 and the LED matrix. Together we reverse-engineered the entire communication protocol — Claude disassembled both the Linux kernel driver and the STM32 firmware to understand the SPI frame format, I2C commands, and the critical PE4 GPIO that switches between animation mode and direct pixel control. The moment I saw my first "HELLO" appear on the 37x8 LED matrix, I knew this was going to work.
 
-The display mapping alone was a puzzle. The 488-byte SPI frame has three physical sections with different byte layouts, including "row-shifted" columns at section boundaries where frame row R maps to physical row R+1. It took dozens of checkerboard tests and ASCII dumps to map all 37 columns correctly. The breakthrough: S1 starts at byte 0 (not byte 4 as I initially assumed), and the [B,G,R,W] channel order was backwards from what the documentation suggested.
+The display mapping alone was a puzzle. The 488-byte SPI frame has three physical sections with different byte layouts, including "row-shifted" columns at section boundaries where frame row R maps to physical row R+1. It took dozens of checkerboard tests and ASCII dumps — me reporting what I saw on the display, Claude adjusting the pixel mapping — to map all 37 columns correctly. The breakthrough: S1 starts at byte 0 (not byte 4 as we initially assumed), and the [B,G,R,W] channel order was backwards from what the documentation suggested.
 
-**Week 3: Sound and fury.** Audio was the hardest challenge. The A13 has an internal codec with a built-in amplifier, and I could see all the registers being set correctly — DAC enabled, mixer routing configured, PA volume at max. But no sound came out. I spent days trying every possible register combination, every DAPM switch permutation, even toggling the PA GPIO at audio frequencies to bypass the codec entirely.
+**Week 3: Sound and fury.** Audio was the hardest challenge. The A13 has an internal codec with a built-in amplifier, and we could see all the registers being set correctly — DAC enabled, mixer routing configured, PA volume at max. But no sound came out. Claude exhaustively tried every possible register combination, every DAPM switch permutation, even toggling the PA GPIO at audio frequencies to bypass the codec entirely. We analyzed the original firmware's BSP kernel driver, searched for undocumented registers, and swept through every bit of the codec's register space.
 
-The root cause turned out to be **a single bit in the device tree**: the PA enable GPIO (PD24) was configured as `GPIO_ACTIVE_LOW` when the hardware is actually `GPIO_ACTIVE_HIGH`. This meant every time the kernel tried to turn the speaker ON, it was turning it OFF, and vice versa. One character change in the DTS fixed everything. I'll never forget the moment I heard that first beep.
+The root cause turned out to be **a single bit in the device tree**: the PA enable GPIO (PD24) was configured as `GPIO_ACTIVE_LOW` when the hardware is actually `GPIO_ACTIVE_HIGH`. This meant every time the kernel tried to turn the speaker ON, it was turning it OFF, and vice versa. Claude found it by analyzing the original firmware's device tree blob. One character change in the DTS fixed everything. I'll never forget the moment I heard that first beep.
 
-**Week 4: Making it a product.** With display, audio, and buttons all working, I built a full app framework — a 6-app launcher with clock, weather, business metrics, timer, notifications, and a sound browser. Added auto-brightness from the onboard light sensor, smooth text scrolling with bounce animation, 27 hand-crafted RGBW pixel art icons, and a REST API daemon that auto-fetches weather and accepts push notifications from any webhook. The whole system boots from RAM in under 10 seconds, plays a startup chime, and launches straight into the app carousel.
+**Week 4: Making it a product.** With display, audio, and buttons all working, Claude built a full app framework — a 6-app launcher with clock, weather, business metrics, timer, notifications, and a sound browser. We added auto-brightness from the onboard light sensor, smooth text scrolling with bounce animation, 27 hand-crafted RGBW pixel art icons, and a REST API daemon that auto-fetches weather and accepts push notifications from any webhook. The whole system boots from RAM in under 10 seconds, plays a startup chime, and launches straight into the app carousel.
 
-### What I Learned
+### What We Learned
 
-This project touched nearly every layer of the embedded stack — from bare-metal register poking and ARM disassembly, through kernel driver development and device tree configuration, to userspace app development and REST API design. Some key discoveries:
+This project touched nearly every layer of the embedded stack — from bare-metal register poking and ARM disassembly, through kernel driver development and device tree configuration, to userspace app development and REST API design. It was also a fascinating test of what's possible when a human and an AI work together on hardware reverse engineering — I provided the physical device, observed results, and made judgment calls, while Claude wrote the code, analyzed firmware binaries, and debugged register configurations at a pace no human could match.
+
+Some key discoveries:
 
 - **PE4 is the mode switch**: HIGH = accept SPI pixel data, LOW = play stored animation. This was the final key to getting display control working. It was never documented anywhere.
 - **The STM32 is always alive**: Even with a dead SD card, the display controller runs its own firmware from internal flash and responds to I2C/SPI. This is why the LaMetric briefly flashes its boot animation even when bricked.
@@ -50,10 +52,9 @@ This project touched nearly every layer of the embedded stack — from bare-meta
 
 What started as "can I get a single LED to light up?" became a fully-featured smart display with 6 apps, audio notifications, auto-brightness, a REST API, and a PC daemon that fetches live weather. All running from RAM, booted over USB, on a device with completely dead storage.
 
+The entire project — from first FEL connection to published GitHub repo — was built in collaboration with Claude Code. Every line of C, Python, device tree, and shell script in this repo was written through that partnership.
+
 The LaMetric Time is back on my desk where it belongs.
-
-
----
 
 ## Features
 
