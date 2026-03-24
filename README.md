@@ -542,6 +542,8 @@ This is an active reverse-engineering project. Contributions welcome in these ar
 
 This project is released under the [MIT License](LICENSE).
 
+> **Note on sound files:** The WAV files in  are extracted from the original LaMetric Time firmware for interoperability purposes. They are included to restore the device to its intended functionality. If you have licensing concerns, you can delete the  directory and the device will fall back to synthesized tones.
+
 The original LaMetric Time firmware is proprietary and is not distributed with this project. STM32 firmware binaries are extracted from the original device for interoperability purposes only.
 
 ---
