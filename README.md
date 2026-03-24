@@ -6,7 +6,7 @@
 
 **Bring a bricked LaMetric Time back to life via USB — no eMMC required.**
 
-A complete recovery system for the LaMetric Time smart clock when the internal storage (micro SD / eMMC) dies. The device boots entirely from RAM over USB using the Allwinner FEL protocol, running a custom Linux 5.15 kernel with full display control, interactive buttons, color icons, scrolling text, a REST API, and more.
+The [LaMetric Time](https://lametric.com/en-US/time) is a Wi-Fi connected smart clock with a 37x8 LED pixel display that shows time, weather, notifications, and custom apps. This project is a complete recovery system for units where the internal storage (micro SD / eMMC) has died. The device boots entirely from RAM over USB using the Allwinner FEL protocol, running a custom Linux 5.15 kernel with full display control, interactive buttons, color icons, scrolling text, a REST API, and more.
 
 
 
@@ -16,7 +16,7 @@ I bought a LaMetric Time a few years back and loved it — it sat on my desk sho
 
 When I finally plugged it back in... nothing. Completely dead. No lights, no boot, no response. After some research, I realized the internal micro SD card had died — NAND flash loses its charge when left unpowered for extended periods, and years in a drawer was enough to corrupt it beyond recovery.
 
-Most people would throw it away. I decided to see if I could bring it back to life — with the help of [Claude Code](https://claude.ai/claude-code), Anthropic's AI coding agent.
+Most people would throw it away. I decided to see if I could bring it back to life — with the help of Claude Code.
 
 ### Down the Rabbit Hole
 
