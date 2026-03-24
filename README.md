@@ -8,7 +8,6 @@
 
 A complete recovery system for the LaMetric Time smart clock when the internal storage (micro SD / eMMC) dies. The device boots entirely from RAM over USB using the Allwinner FEL protocol, running a custom Linux 5.15 kernel with full display control, interactive buttons, color icons, scrolling text, a REST API, and more.
 
-> *Picture: A recovered LaMetric Time displaying "HELLO" in crisp white pixels across its 37x8 LED matrix, with a yellow sun icon glowing on the left RGBW panel.*
 
 ---
 
