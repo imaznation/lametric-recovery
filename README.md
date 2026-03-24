@@ -477,29 +477,45 @@ The factory firmware (v2.3.9) runs a sophisticated embedded Linux system:
 
 ## The Story
 
-This project started with a LaMetric Time that had been sitting unplugged for years. When powered on — nothing. The internal micro SD card had died from NAND charge leakage.
+I bought a LaMetric Time a few years back and loved it — it sat on my desk showing the time, weather, and notifications. Then life got busy, I unplugged it, and it sat in a drawer for years.
 
-With no working storage, the Allwinner A13 SoC falls into **USB FEL mode** — a low-level recovery protocol that allows loading code directly into RAM over USB. This project exploits that to build a complete working system that never touches the dead storage.
+When I finally plugged it back in... nothing. Completely dead. No lights, no boot, no response. After some research, I realized the internal micro SD card had died — NAND flash loses its charge when left unpowered for extended periods, and years in a drawer was enough to corrupt it beyond recovery.
 
-### The Journey
+Most people would throw it away. I decided to see if I could bring it back to life.
 
-1. **Identified the SoC** — Allwinner A13 (sun5i), not R16/A33 as commonly documented online
-2. **Got u-boot running** — Custom build with video/LED drivers disabled (they crash on LaMetric hardware)
-3. **Booted Linux from RAM** — Mainline 5.15 kernel with custom device tree
-4. **Solved USB gadget** — CDC ACM serial creates a COM port on the PC (the only output channel!)
-5. **Reverse-engineered the display protocol** — Disassembled both the kernel driver and STM32 firmware
-6. **Found the critical bugs** — Wrong I2C pins (PB17/18, not PE12/13), wrong SPI function (4, not 3), S1 starts at byte 0 (not 4), PE4 must stay HIGH for data mode
-7. **Mapped all 37 pixel columns** — Including the row-shifted extra columns at section boundaries
-8. **Built a complete shell** — Interactive commands, REST API, weather widget, auto-brightness
+### Down the Rabbit Hole
 
-### Key Discoveries
+The first breakthrough was discovering that with a dead storage device, the Allwinner A13 processor falls into **USB FEL mode** — a bare-metal recovery protocol baked into the chip's ROM. This meant I could talk to the processor directly over USB and load code into RAM.
 
-- **PE4 is the mode switch**: HIGH = accept SPI pixel data, LOW = play stored animation. This was the final key to getting display control working.
-- **`0x50, 0x00` restarts SPI DMA**: Sending stop-animation after start-animation is required for direct pixel control. This was never documented anywhere.
-- **S1 RGBW starts at byte 0**: The STM32 reads the first section starting from the very beginning of the 488-byte frame, not offset by 4 bytes.
-- **The STM32 is always alive**: Even with a dead SD card, the STM32 display controller runs its own firmware from internal flash and responds to I2C/SPI.
+What followed was one of the deepest embedded reverse-engineering projects I've ever done:
 
----
+**Week 1: Getting a heartbeat.** I started with nothing — no documentation for the LaMetric's hardware, no schematics, no source code. Online resources incorrectly identified the SoC as an R16/A33, but FEL told me it was actually an **Allwinner A13 (sun5i)**. I built a minimal u-boot from scratch, discovering that the stock video and LED drivers crash on LaMetric hardware and had to be disabled. After days of trial and error, I got a Linux 5.15 kernel booting from RAM — but with no display, no output, and no way to know if it was even running.
+
+**Week 2: First pixels.** The display is driven by an STM32 microcontroller that sits between the A13 and the LED matrix. I had to reverse-engineer the entire communication protocol — disassembling both the Linux kernel driver and the STM32 firmware to understand the SPI frame format, I2C commands, and the critical PE4 GPIO that switches between animation mode and direct pixel control. The moment I saw my first "HELLO" appear on the 37x8 LED matrix, I knew this was going to work.
+
+The display mapping alone was a puzzle. The 488-byte SPI frame has three physical sections with different byte layouts, including "row-shifted" columns at section boundaries where frame row R maps to physical row R+1. It took dozens of checkerboard tests and ASCII dumps to map all 37 columns correctly. The breakthrough: S1 starts at byte 0 (not byte 4 as I initially assumed), and the [B,G,R,W] channel order was backwards from what the documentation suggested.
+
+**Week 3: Sound and fury.** Audio was the hardest challenge. The A13 has an internal codec with a built-in amplifier, and I could see all the registers being set correctly — DAC enabled, mixer routing configured, PA volume at max. But no sound came out. I spent days trying every possible register combination, every DAPM switch permutation, even toggling the PA GPIO at audio frequencies to bypass the codec entirely.
+
+The root cause turned out to be **a single bit in the device tree**: the PA enable GPIO (PD24) was configured as `GPIO_ACTIVE_LOW` when the hardware is actually `GPIO_ACTIVE_HIGH`. This meant every time the kernel tried to turn the speaker ON, it was turning it OFF, and vice versa. One character change in the DTS fixed everything. I'll never forget the moment I heard that first beep.
+
+**Week 4: Making it a product.** With display, audio, and buttons all working, I built a full app framework — a 6-app launcher with clock, weather, business metrics, timer, notifications, and a sound browser. Added auto-brightness from the onboard light sensor, smooth text scrolling with bounce animation, 27 hand-crafted RGBW pixel art icons, and a REST API daemon that auto-fetches weather and accepts push notifications from any webhook. The whole system boots from RAM in under 10 seconds, plays a startup chime, and launches straight into the app carousel.
+
+### What I Learned
+
+This project touched nearly every layer of the embedded stack — from bare-metal register poking and ARM disassembly, through kernel driver development and device tree configuration, to userspace app development and REST API design. Some key discoveries:
+
+- **PE4 is the mode switch**: HIGH = accept SPI pixel data, LOW = play stored animation. This was the final key to getting display control working. It was never documented anywhere.
+- **The STM32 is always alive**: Even with a dead SD card, the display controller runs its own firmware from internal flash and responds to I2C/SPI. This is why the LaMetric briefly flashes its boot animation even when bricked.
+- **S1 RGBW starts at byte 0**: The STM32 reads the first section from the very beginning of the 488-byte frame, not offset by 4 bytes as the kernel driver implied.
+- **PA polarity matters**: One wrong GPIO flag = completely silent audio. The original firmware's BSP driver handled this differently from mainline Linux.
+- **USB re-enumeration is fragile**: When the device transitions from FEL mode to kernel USB gadget, Windows can get confused by phantom device entries. Cleaning stale PnP devices fixes it.
+
+### The Result
+
+What started as "can I get a single LED to light up?" became a fully-featured smart display with 6 apps, audio notifications, auto-brightness, a REST API, and a PC daemon that fetches live weather. All running from RAM, booted over USB, on a device with completely dead storage.
+
+The LaMetric Time is back on my desk where it belongs.
 
 ## Alternative Fix: SD Card Replacement
 
