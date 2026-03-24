@@ -147,6 +147,23 @@ cd /mnt/c/path/to/lametric-recovery
 ./build_final_kernel.sh
 ```
 
+### Download Pre-built Binaries
+
+The compiled binaries are attached to the [v1.0 GitHub Release](https://github.com/imaznation/lametric-recovery/releases/tag/v1.0) (not in the git repo itself).
+
+```bash
+# Download all binaries into your repo directory
+gh release download v1.0 --repo imaznation/lametric-recovery
+
+# Or with curl:
+curl -LO https://github.com/imaznation/lametric-recovery/releases/download/v1.0/u-boot-AUTOBOOT.bin
+curl -LO https://github.com/imaznation/lametric-recovery/releases/download/v1.0/lametric_515_wifi.uImage
+curl -LO https://github.com/imaznation/lametric-recovery/releases/download/v1.0/sun5i-a13-lametric-515-padded.dtb
+curl -LO https://github.com/imaznation/lametric-recovery/releases/download/v1.0/sunxi-fel.exe
+```
+
+> **Mac/Linux:** Install sunxi-fel natively with `brew install sunxi-tools` (Mac) or `apt install sunxi-tools` (Linux). The `.exe` is Windows-only.
+
 ### Boot Sequence
 
 ```bash

@@ -73,3 +73,22 @@ sunxi-fel uboot u-boot-AUTOBOOT.bin write 0x42000000 lametric_515_wifi.uImage wr
 5. **Kernel size**: Must stay under ~8MB or u-boot's `CONFIG_SYS_BOOTM_LEN` limit is exceeded
 6. **USB re-enumeration**: After FEL flash, Windows may need phantom device cleanup for COM port to appear
 7. **ALSA config**: Static aplay needs full `pcm.hw` and `ctl.hw` definitions with `@args` in alsa.conf
+
+## Pre-built binaries
+
+The compiled binaries (u-boot, kernel, DTB) are NOT in the git repo — they're in the [v1.0 GitHub Release](https://github.com/imaznation/lametric-recovery/releases/tag/v1.0).
+
+Download them into the repo directory:
+```bash
+gh release download v1.0 --repo imaznation/lametric-recovery
+```
+
+Or manually:
+```bash
+curl -LO https://github.com/imaznation/lametric-recovery/releases/download/v1.0/u-boot-AUTOBOOT.bin
+curl -LO https://github.com/imaznation/lametric-recovery/releases/download/v1.0/lametric_515_wifi.uImage
+curl -LO https://github.com/imaznation/lametric-recovery/releases/download/v1.0/sun5i-a13-lametric-515-padded.dtb
+curl -LO https://github.com/imaznation/lametric-recovery/releases/download/v1.0/sunxi-fel.exe
+```
+
+On Mac/Linux, install sunxi-fel natively: `brew install sunxi-tools` (Mac) or `apt install sunxi-tools` (Linux). The `.exe` is Windows-only.
