@@ -1678,6 +1678,16 @@ static int carousel_process_cmd(char *l) {
     if (strncmp(l, "time ", 5) == 0)    { cmd_time(l + 5); return 0; }
     if (strncmp(l, "settime ", 8) == 0) { cmd_settime(l + 8); return 0; }
     if (strncmp(l, "bright ", 7) == 0)  { cmd_bright(l + 7); return 0; }
+    if (strncmp(l, "luxrange ", 9) == 0) {
+        int mn = 0, mx = 0;
+        sscanf(l + 9, "%d %d", &mn, &mx);
+        if (mn >= 0 && mn <= 255 && mx >= mn && mx <= 255) {
+            lux_bright_min = mn; lux_bright_max = mx;
+            char buf[64]; snprintf(buf, sizeof(buf), "Lux range: %d-%d\r\n", mn, mx);
+            spr(buf);
+        } else spr("luxrange <min> <max> (0-255)\r\n");
+        return 0;
+    }
     if (strncmp(l, "testtone", 8) == 0) {
         char *a = l + 8; while (*a == ' ') a++;
         cmd_testtone(a);
