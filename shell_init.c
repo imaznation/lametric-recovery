@@ -93,7 +93,8 @@ static int sound_idx = 0;
 #define APP_TIMER   3
 #define APP_NOTIF   4
 #define APP_SOUNDS  5
-#define NUM_APPS    6
+#define APP_BRIGHT  6
+#define NUM_APPS    7
 static int current_app = APP_CLOCK;
 
 static void spr(const char *s) {
@@ -1677,15 +1678,36 @@ static int carousel_process_cmd(char *l) {
     if (strncmp(l, "timer", 5) == 0)   { char *a=l+5; while(*a==' ')a++; cmd_timer(a); return 0; }
     if (strncmp(l, "time ", 5) == 0)    { cmd_time(l + 5); return 0; }
     if (strncmp(l, "settime ", 8) == 0) { cmd_settime(l + 8); return 0; }
-    if (strncmp(l, "bright ", 7) == 0)  { cmd_bright(l + 7); return 0; }
+    if (strncmp(l, "bright ", 7) == 0) {
+        int b = atoi(l + 7); if (b < 0) b = 0; if (b > 255) b = 255;
+        lux_bright_min = b; lux_bright_max = b;
+        text_brightness = (unsigned char)b;
+        if (text_brightness < 15) text_brightness = 15;
+        i2c_cmd(0x20, b > 127 ? 127 : b);
+        spr("Brightness: "); spr_num(b); spr(" (locked)\r\n");
+        return 0;
+    }
     if (strncmp(l, "luxrange ", 9) == 0) {
         int mn = 0, mx = 0;
         sscanf(l + 9, "%d %d", &mn, &mx);
         if (mn >= 0 && mn <= 255 && mx >= mn && mx <= 255) {
             lux_bright_min = mn; lux_bright_max = mx;
-            char buf[64]; snprintf(buf, sizeof(buf), "Lux range: %d-%d\r\n", mn, mx);
+            text_brightness = (unsigned char)(mn > 255 ? 255 : mn);
+            if (text_brightness < 15) text_brightness = 15;
+            i2c_cmd(0x20, mn > 127 ? 127 : mn);
+            char buf[64]; snprintf(buf, sizeof(buf), "Lux range: %d-%d (applied)\r\n", mn, mx);
             spr(buf);
         } else spr("luxrange <min> <max> (0-255)\r\n");
+        return 0;
+    }
+    if (strncmp(l, "scrollmode ", 11) == 0) {
+        int m = atoi(l + 11);
+        if (m >= 0 && m <= 4) {
+            scroll_mode = m;
+            const char *names[] = {"auto","ltr","rtl","bounce","noscroll"};
+            char buf[48]; snprintf(buf, sizeof(buf), "Scroll mode: %s (%d)\r\n", names[m], m);
+            spr(buf);
+        } else spr("scrollmode 0-4: 0=auto 1=ltr 2=rtl 3=bounce 4=noscroll\r\n");
         return 0;
     }
     if (strncmp(l, "testtone", 8) == 0) {
@@ -1745,7 +1767,7 @@ static void cmd_carousel(void) {
     int blink = 0, scroll_pos = 0, scroll_frame = 0;
     carousel_active = 1;
 
-    const char *app_names[] = {"Clock", "Weather", "Metrics", "Timer", "Notifs", "Sounds"};
+    const char *app_names[] = {"Clock", "Weather", "Metrics", "Timer", "Notifs", "Sounds", "Bright"};
     spr("\r\n========================================\r\n");
     spr("  LaMetric App Launcher\r\n");
     spr("  O=next app | <>=in-app | vol+/-\r\n");
@@ -1803,6 +1825,17 @@ static void cmd_carousel(void) {
                     if (file_exists(sp)) play_wav_quiet(sp);
                     break;
                 }
+                case APP_BRIGHT: {
+                    /* > = brighter: shift range up by 10 */
+                    lux_bright_min += 10; if (lux_bright_min > 245) lux_bright_min = 245;
+                    lux_bright_max += 10; if (lux_bright_max > 255) lux_bright_max = 255;
+                    if (lux_bright_max < lux_bright_min) lux_bright_max = lux_bright_min;
+                    text_brightness = (unsigned char)(lux_bright_min > 255 ? 255 : lux_bright_min);
+                    if (text_brightness < 15) text_brightness = 15;
+                    i2c_cmd(0x20, lux_bright_min > 127 ? 127 : lux_bright_min);
+                    last_lux_time = now; /* reset timer so lux doesn't immediately override */
+                    break;
+                }
             }
             scroll_pos = 0;
         }
@@ -1818,6 +1851,17 @@ static void cmd_carousel(void) {
                     sound_idx = (sound_idx + cnt - 1) % cnt;
                     char sp[64]; snprintf(sp, 64, "/sounds/%s.wav", sound_list[sound_idx]);
                     if (file_exists(sp)) play_wav_quiet(sp);
+                    break;
+                }
+                case APP_BRIGHT: {
+                    /* < = dimmer: shift range down by 10 */
+                    lux_bright_min -= 10; if (lux_bright_min < 0) lux_bright_min = 0;
+                    lux_bright_max -= 10; if (lux_bright_max < 10) lux_bright_max = 10;
+                    if (lux_bright_max < lux_bright_min) lux_bright_max = lux_bright_min;
+                    text_brightness = (unsigned char)(lux_bright_min > 255 ? 255 : lux_bright_min);
+                    if (text_brightness < 15) text_brightness = 15;
+                    i2c_cmd(0x20, lux_bright_min > 127 ? 127 : lux_bright_min);
+                    last_lux_time = now; /* reset timer so lux doesn't immediately override */
                     break;
                 }
             }
@@ -1972,6 +2016,13 @@ static void cmd_carousel(void) {
             render_text_scroll(sound_list[sound_idx], pixels, text_brightness, 10, scroll_pos);
             build_frame(pixels, frame);
             render_icon("music", frame);
+            break;
+        }
+        case APP_BRIGHT: {
+            char bb[20]; snprintf(bb, 20, "%d-%d", lux_bright_min, lux_bright_max);
+            render_text_at(bb, pixels, text_brightness, 10);
+            build_frame(pixels, frame);
+            render_icon("sun", frame);
             break;
         }
         }

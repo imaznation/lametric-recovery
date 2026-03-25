@@ -248,11 +248,19 @@ class DeviceManager:
 
     # -- Command interface ----------------------------------------------------
 
+    # Commands the carousel handles inline (no exit/restart needed)
+    CAROUSEL_INLINE_CMDS = (
+        "weather ", "metric ", "sounds ", "notify ", "dismiss",
+        "timer", "time ", "settime ", "bright ", "luxrange ",
+        "scrollmode ", "testtone", "beep", "icon ", "icontext ",
+    )
+
     def send_command(self, cmd, wait=None):
         """Send a text command to the device and return the response string.
 
-        If the device carousel is active, sends 'exit' first to return to the
-        main shell, then sends the command, then restarts the carousel.
+        If the device carousel is active and the command is handled inline
+        by the carousel, send it directly (no exit/restart needed).
+        Otherwise, exit the carousel first, send the command, then restart.
 
         Returns (success: bool, response: str).
         """
@@ -262,10 +270,16 @@ class DeviceManager:
             if not self._connected or not self._port:
                 return False, "Device not connected"
             try:
-                # If carousel is active and this isn't a carousel command,
-                # exit first so the main shell processes the command
+                # Check if carousel can handle this command inline
+                carousel_handles = any(
+                    cmd.startswith(prefix) or cmd == prefix.strip()
+                    for prefix in self.CAROUSEL_INLINE_CMDS
+                )
+
                 restart_carousel = False
-                if self._device_carousel_active and cmd not in ("carousel", "exit"):
+                if (self._device_carousel_active
+                        and cmd not in ("carousel", "exit")
+                        and not carousel_handles):
                     self._port.write(b"exit\r")
                     time.sleep(0.5)
                     self._port.read(self._port.in_waiting)  # flush
@@ -840,7 +854,10 @@ class LaMetricHandler(BaseHTTPRequestHandler):
         self._send_json(200, info)
 
     def _handle_display(self, body):
-        """POST /api/v1/display — show static text."""
+        """POST /api/v1/display — show static text.
+
+        Fields: text (required), scroll (0-4: 0=auto, 1=ltr, 2=rtl, 3=bounce, 4=noscroll).
+        """
         text = body.get("text", "")
         if not text:
             self._send_json(400, {"error": "Missing 'text' field"})
@@ -848,6 +865,9 @@ class LaMetricHandler(BaseHTTPRequestHandler):
         if not self.device.ensure_connected():
             self._send_json(503, {"error": "Device not connected"})
             return
+        scroll = body.get("scroll")
+        if scroll is not None:
+            self.device.send_command(f"scrollmode {int(scroll)}", wait=0.3)
         ok, resp = self.device.send_command(f"text {text}", wait=1.5)
         self._send_json(200 if ok else 500, {
             "command": "text",
@@ -879,7 +899,8 @@ class LaMetricHandler(BaseHTTPRequestHandler):
         """POST /api/v1/notification — push a notification.
 
         Sends `notify <icon> <text>` to the device.
-        Fields: text (required), icon (default: bell), sound, duration (seconds).
+        Fields: text (required), icon (default: bell), sound, duration (seconds),
+                scroll (0-4: 0=auto, 1=ltr, 2=rtl, 3=bounce, 4=noscroll).
         """
         text = body.get("text", "")
         if not text:
@@ -892,6 +913,11 @@ class LaMetricHandler(BaseHTTPRequestHandler):
         icon = body.get("icon", "bell")
         sound = body.get("sound", "")
         duration = body.get("duration", 0)
+        scroll = body.get("scroll")
+
+        # Set scroll mode before pushing if specified
+        if scroll is not None:
+            self.device.send_command(f"scrollmode {int(scroll)}", wait=0.3)
 
         # Build the notify command with optional sound
         # Format: notify <icon> [sound:<name>] <text>
