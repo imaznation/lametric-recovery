@@ -150,6 +150,7 @@ class DeviceManager:
         self._device_info = {}
         self._reconnect_thread = None
         self._stopping = False
+        self._device_carousel_active = False
 
     # -- Connection management ------------------------------------------------
 
@@ -250,6 +251,9 @@ class DeviceManager:
     def send_command(self, cmd, wait=None):
         """Send a text command to the device and return the response string.
 
+        If the device carousel is active, sends 'exit' first to return to the
+        main shell, then sends the command, then restarts the carousel.
+
         Returns (success: bool, response: str).
         """
         if wait is None:
@@ -258,10 +262,32 @@ class DeviceManager:
             if not self._connected or not self._port:
                 return False, "Device not connected"
             try:
+                # If carousel is active and this isn't a carousel command,
+                # exit first so the main shell processes the command
+                restart_carousel = False
+                if self._device_carousel_active and cmd not in ("carousel", "exit"):
+                    self._port.write(b"exit\r")
+                    time.sleep(0.5)
+                    self._port.read(self._port.in_waiting)  # flush
+                    restart_carousel = True
+
                 self._port.write((cmd + "\r").encode())
                 time.sleep(wait)
                 raw = self._port.read(self._port.in_waiting)
                 resp = raw.decode(errors="ignore")
+
+                # Restart carousel if we exited it
+                if restart_carousel:
+                    self._port.write(b"carousel\r")
+                    time.sleep(0.5)
+                    self._port.read(self._port.in_waiting)  # flush
+
+                # Track carousel state
+                if cmd == "carousel":
+                    self._device_carousel_active = True
+                elif cmd == "exit":
+                    self._device_carousel_active = False
+
                 return True, resp.strip()
             except Exception as exc:
                 _log(f"Command error: {exc}")
@@ -287,6 +313,7 @@ class DeviceManager:
         # Auto-start the device's production widget carousel
         ok2, resp2 = self.send_command("carousel", wait=1.0)
         if ok2:
+            self._device_carousel_active = True
             _log("Carousel started on device")
         else:
             _log(f"Carousel start failed: {resp2}")
