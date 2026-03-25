@@ -1839,9 +1839,8 @@ static void cmd_carousel(void) {
                 else if (lux < 300) br = lux_bright_min + (lux * (lux_bright_max - lux_bright_min) / 300);
                 else br = lux_bright_max;
                 i2c_cmd(0x20, br > 127 ? 127 : br);
-                text_brightness = (br > 63) ? (unsigned char)(br * 2) : (unsigned char)(br * 3);
-                if (text_brightness > 255) text_brightness = 255;
-                if (text_brightness < 30) text_brightness = 30;
+                text_brightness = (unsigned char)(br > 255 ? 255 : br);
+                if (text_brightness < 15) text_brightness = 15;
             }
             last_lux_time = now;
         }
