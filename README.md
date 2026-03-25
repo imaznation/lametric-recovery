@@ -63,19 +63,24 @@ The LaMetric Time is back on my desk where it belongs.
 - **27 color RGBW icons** — weather (sun, cloud, rain, snow, thunder), status (check, X, warning, info, heart), arrows, trends, clock, music, mail, bell, chart, star, wifi, battery, home, fire, smile
 - **Full font coverage** — uppercase + lowercase 5x7 pixel font with digits and symbols
 - **Horizontal text scrolling** — smooth pixel-level scroll across all 37 columns
-- **Auto-brightness** — JSA1127 ambient light sensor with lux-to-brightness mapping
+- **Auto-brightness** — JSA1127 ambient light sensor with configurable lux-to-brightness range
+- **Brightness control app** — dedicated carousel app to adjust brightness range with `<`/`>` buttons while keeping dynamic auto-brightness
+- **Scroll modes** — auto, left-to-right, right-to-left, bounce, and no-scroll — configurable via serial, API, or per-notification
 - **Buzzing fix** — SPI rate reduction eliminates audible buzzing from LED drivers
 
 ### Widgets and Carousel
-- **Widget carousel** — auto-rotating display of clock, weather, and notifications with configurable interval
-- **Clock widget** — persistent HH:MM display with blinking colon and clock icon on the RGBW panel
-- **Weather widget** — fetches live weather from Open-Meteo API (no API key required), displays icon + temperature
-- **Push notifications** — display alerts with optional icon, sound, and auto-dismiss
+- **Widget carousel** — 7 apps: Clock, Weather, Metrics, Timer, Notifications, Sounds, Brightness — navigate with physical buttons
+- **Clock widget** — 4 modes: 24h, 12h, uptime, seconds — with blinking colon and clock icon
+- **Weather widget** — fetches live weather from Open-Meteo API (no API key required), 4 views: temp, conditions, hi/lo, extra
+- **Metrics widget** — named metrics with trend arrows, updated via serial or REST API
+- **Push notifications** — display alerts with optional icon, sound, scroll mode, and auto-dismiss
+- **Timer widget** — countdown timer with alarm tone
+- **Sounds browser** — browse and play 66 built-in sounds with `<`/`>` buttons
 
 ### Interaction
 - **Interactive button controls** — Left (`<`), Action (`O`), Right (`>`) + Volume buttons for carousel navigation
 - **REST API daemon** — HTTP server on the PC for programmatic display control, weather integration, and carousel management
-- **Full serial command set** — 40+ commands for display, audio, sensors, diagnostics, and system control
+- **Full serial command set** — 40+ commands for display, audio, sensors, diagnostics, and system control (all work inline during carousel)
 
 ### Hardware
 - **Audio fully working** — sun4i-codec with DAC, internal PA, and external amplifier. PA polarity fix: GPIO_ACTIVE_HIGH on PD24 (the PA enable is active-high, not active-low). Supports aplay, OSS /dev/dsp, and PIO playback.
@@ -191,9 +196,10 @@ clock             # Start real-time clock display
 icon sun          # Show color sun icon on RGBW panel
 icontext rain 52F # Weather icon + temperature
 color 127 0 0 0   # Set RGB color (red max, green, blue, white)
-bright 80         # Set brightness (0-127)
+bright 80         # Set brightness (0-255)
+luxrange 40 180   # Set auto-brightness range (min max)
+scrollmode 3      # Set scroll mode (0=auto, 3=bounce)
 notify bell Alert # Push a notification
-luxmon            # Start auto-brightness from light sensor
 demo              # Run interactive demo with button controls
 beep 800 300      # Play tone (frequency duration_ms)
 ```
@@ -211,7 +217,9 @@ curl -X POST http://localhost:8080/api/v1/display -d '{"text": "HELLO"}'
 curl -X POST http://localhost:8080/api/v1/scroll -d '{"text": "Hello World!"}'
 curl http://localhost:8080/api/v1/clock
 curl -X POST http://localhost:8080/api/v1/bright -d '{"value": 80}'
-curl -X POST http://localhost:8080/api/v1/notification -d '{"text": "Alert!", "sound": "positive1"}'
+curl -X POST http://localhost:8080/api/v1/luxrange -d '{"min": 40, "max": 180}'
+curl -X POST http://localhost:8080/api/v1/scrollmode -d '{"mode": 3}'
+curl -X POST http://localhost:8080/api/v1/notification -d '{"text": "Alert!", "sound": "positive1", "scroll": 3}'
 ```
 
 ### Weather Widget
@@ -293,7 +301,9 @@ Key discovery: **S1 starts at byte 0**, not byte 4 as initially assumed. The STM
 | `gradient` | Show brightness gradient pattern |
 | `fill <B> <G> <R> <W>` | Fill S1 with RGBW color and white sections with W value |
 | `color <R> <G> <B> [W]` | Set LED channel brightness via I2C (0-127) |
-| `bright <0-255>` | Set overall white brightness |
+| `bright <0-255>` | Set overall white brightness (locks auto-brightness range during carousel) |
+| `luxrange <min> <max>` | Set auto-brightness range (0-255), applied immediately |
+| `scrollmode <0-4>` | Set scroll mode: 0=auto, 1=ltr, 2=rtl, 3=bounce, 4=noscroll |
 | `colormap` | Show sections in different colors (debug) |
 | `coltest` | Alternating bright/dim columns (debug) |
 | `test <N>` | Light up byte N of 488-byte frame (debug) |
@@ -315,8 +325,9 @@ Key discovery: **S1 starts at byte 0**, not byte 4 as initially assumed. The STM
 
 | Command | Description |
 |---------|-------------|
-| `carousel` | Start production carousel (clock + weather + notifications) |
+| `carousel` | Start production carousel (7 apps: clock, weather, metrics, timer, notifs, sounds, brightness) |
 | `weather <icon> <temp>` | Store weather data for carousel display |
+| `metric <name> <value> [trend]` | Add/update named metric with optional trend (up/down/flat) |
 | `notify [icon] <text>` | Push a notification into the carousel |
 | `dismiss` | Dismiss the current notification |
 
@@ -372,12 +383,17 @@ Key discovery: **S1 starts at byte 0**, not byte 4 as initially assumed. The STM
 | Method | Endpoint | Body | Description |
 |--------|----------|------|-------------|
 | `GET` | `/api/v1/info` | — | Device connection info and status |
-| `POST` | `/api/v1/display` | `{"text": "hello"}` | Show static text |
+| `POST` | `/api/v1/display` | `{"text": "hello", "scroll": 3}` | Show static text (optional scroll mode 0-4) |
 | `POST` | `/api/v1/scroll` | `{"text": "long message"}` | Scroll text across the display |
-| `POST` | `/api/v1/notification` | `{"text": "Alert!", "icon": "bell", "sound": "positive1", "duration": 5}` | Push notification with optional icon, sound, and auto-dismiss |
-| `POST` | `/api/v1/metric` | `{"icon": "chart", "value": "42%", "trend": "up"}` | Display metric with icon and trend arrow |
+| `POST` | `/api/v1/notification` | `{"text": "Alert!", "icon": "bell", "sound": "positive1", "scroll": 3}` | Push notification with optional icon, sound, scroll mode, and auto-dismiss |
+| `POST` | `/api/v1/metric` | `{"name": "ARR", "value": "$2.4M", "icon": "chart", "trend": "up"}` | Add/update named metric with trend arrow |
+| `GET` | `/api/v1/metrics` | — | List all named metrics |
+| `DELETE` | `/api/v1/metric/{name}` | — | Delete a named metric |
+| `POST` | `/api/v1/metrics/push` | — | Push all metrics to device |
 | `GET` | `/api/v1/clock` | — | Sync time from PC and start clock mode |
-| `POST` | `/api/v1/bright` | `{"value": 80}` | Set display brightness (0-255) |
+| `POST` | `/api/v1/bright` | `{"value": 80}` | Set display brightness (0-255, locks auto-brightness range) |
+| `POST` | `/api/v1/luxrange` | `{"min": 30, "max": 200}` | Set auto-brightness range (applied immediately) |
+| `POST` | `/api/v1/scrollmode` | `{"mode": 3}` | Set scroll mode: 0=auto, 1=ltr, 2=rtl, 3=bounce, 4=noscroll |
 | `POST` | `/api/v1/widget` | `{"type": "clock"}` | Add widget to carousel |
 | `GET` | `/api/v1/widgets` | — | List active carousel widgets |
 | `DELETE` | `/api/v1/widget/{id}` | — | Remove widget from carousel |
@@ -553,6 +569,7 @@ The USB FEL recovery approach in this project is for those who want to understan
 
 ## Known Limitations
 
+- **I2C white brightness capped at 127** — the STM32 display controller register `0x20` accepts 0-127; SPI pixel brightness goes to 255
 - **Audio works but volume range is limited** — the mainline sun4i-codec driver uses PA volume 0-63; for maximum output, set `volume 63`
 - **WiFi not connected** — hardware is detected but driver integration and network configuration are not complete
 - **No persistent storage** — everything runs from RAM; state is lost on power cycle

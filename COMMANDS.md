@@ -18,7 +18,9 @@ Connect via PuTTY, Tera Term, or any serial terminal to the COM port that appear
 | `gradient` | | Show a brightness gradient pattern across the display. |
 | `fill` | `<B> <G> <R> <W>` | Fill S1 with a specific RGBW color (0-255 each) and white sections with the W value. |
 | `color` | `<R> <G> <B> [W]` | Set LED channel brightness via I2C (0-127 each). Controls the STM32 brightness registers. |
-| `bright` | `<0-255>` | Set overall white channel brightness via I2C register `0x20`. |
+| `bright` | `<0-255>` | Set overall white channel brightness via I2C register `0x20`. During carousel, also locks the auto-brightness range to the set value. |
+| `luxrange` | `<min> <max>` | Set the auto-brightness range (0-255). The lux sensor maps ambient light to this range. Applied immediately. Example: `luxrange 50 200` |
+| `scrollmode` | `<0-4>` | Set text scroll mode: 0=auto (bounce short, wrap long), 1=left-to-right, 2=right-to-left, 3=bounce, 4=no-scroll. Works during carousel. |
 
 ---
 
@@ -36,10 +38,25 @@ Connect via PuTTY, Tera Term, or any serial terminal to the COM port that appear
 
 | Command | Arguments | Description |
 |---------|-----------|-------------|
-| `carousel` | | Start the production widget carousel. Auto-rotates between clock, weather (if set), and notifications. Use left/right buttons to navigate, action button to dismiss notifications. Send `exit` over serial to stop. |
+| `carousel` | | Start the production widget carousel with 7 apps: Clock, Weather, Metrics, Timer, Notifications, Sounds, and Brightness. Action button cycles apps, `<`/`>` navigate within each app. Send `exit` over serial to stop. |
 | `weather` | `<icon> <temp>` | Store weather data for the carousel. Typically sent by the PC daemon. Example: `weather sun 72F` |
 | `notify` | `[icon] <text>` | Push a notification into the carousel. Displayed on next rotation or immediately if action button is pressed. Example: `notify bell Meeting` |
 | `dismiss` | | Dismiss the current notification from the carousel. |
+| `metric` | `<name> <value> [trend]` | Add or update a named metric in the carousel. Trend: `up`, `down`, or `flat`. Example: `metric ARR $2.4M up` |
+
+The following commands work **inline during carousel** (no need to exit first): `weather`, `metric`, `notify`, `dismiss`, `timer`, `time`, `settime`, `bright`, `luxrange`, `scrollmode`, `beep`, `testtone`, `icon`, `icontext`.
+
+### Carousel Apps
+
+| App | Icon | `<` Button | `>` Button |
+|-----|------|------------|------------|
+| **Clock** | clock | Previous mode (24h/12h/uptime/seconds) | Next mode |
+| **Weather** | sun/cloud/etc | Previous view (temp/conditions/hi-lo/extra) | Next view |
+| **Metrics** | chart | Previous metric | Next metric |
+| **Timer** | clock/fire | Reset timer | Start/stop timer |
+| **Notifications** | bell | Dismiss notification | Next notification |
+| **Sounds** | music | Previous sound + play | Next sound + play |
+| **Brightness** | sun | Shift lux range down by 10 (dimmer) | Shift lux range up by 10 (brighter) |
 
 ---
 
