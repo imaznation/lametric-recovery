@@ -748,6 +748,10 @@ class LaMetricHandler(BaseHTTPRequestHandler):
             self._handle_set_weather(body)
         elif path == "/api/v1/carousel":
             self._handle_post_carousel(body)
+        elif path == "/api/v1/scrollmode":
+            self._handle_scrollmode(body)
+        elif path == "/api/v1/luxrange":
+            self._handle_luxrange(body)
         else:
             self._send_json(404, {"error": "Not found", "path": path})
 
@@ -966,6 +970,50 @@ class LaMetricHandler(BaseHTTPRequestHandler):
         self._send_json(200 if ok else 500, {
             "command": "bright",
             "value": value,
+            "success": ok,
+            "response": resp,
+        })
+
+    def _handle_scrollmode(self, body):
+        """POST /api/v1/scrollmode — set scroll mode (0-4).
+
+        Modes: 0=auto, 1=left-to-right, 2=right-to-left, 3=bounce, 4=no-scroll
+        """
+        mode = body.get("mode")
+        if mode is None:
+            self._send_json(400, {"error": "Missing 'mode' field (0-4)"})
+            return
+        mode = max(0, min(4, int(mode)))
+        names = ["auto", "left-to-right", "right-to-left", "bounce", "no-scroll"]
+        if not self.device.ensure_connected():
+            self._send_json(503, {"error": "Device not connected"})
+            return
+        ok, resp = self.device.send_command(f"scrollmode {mode}", wait=1.0)
+        self._send_json(200 if ok else 500, {
+            "command": "scrollmode",
+            "mode": mode,
+            "name": names[mode],
+            "success": ok,
+            "response": resp,
+        })
+
+    def _handle_luxrange(self, body):
+        """POST /api/v1/luxrange — set auto-brightness min/max (0-255).
+
+        {"min": 30, "max": 200}
+        """
+        mn = body.get("min", 30)
+        mx = body.get("max", 200)
+        mn = max(0, min(255, int(mn)))
+        mx = max(mn, min(255, int(mx)))
+        if not self.device.ensure_connected():
+            self._send_json(503, {"error": "Device not connected"})
+            return
+        ok, resp = self.device.send_command(f"luxrange {mn} {mx}", wait=1.0)
+        self._send_json(200 if ok else 500, {
+            "command": "luxrange",
+            "min": mn,
+            "max": mx,
             "success": ok,
             "response": resp,
         })

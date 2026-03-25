@@ -34,6 +34,15 @@ static int i2c_fd = -1;
 /* Global state */
 static int carousel_active = 0;
 static int audio_volume = 63;
+
+/* Scroll mode: 0=auto (bounce short, wrap long), 1=left-to-right, 2=right-to-left,
+ * 3=bounce, 4=no-scroll (clip) */
+static int scroll_mode = 0;
+
+/* Auto-brightness mapping: min and max output brightness (0-255).
+ * Default 15-127 is conservative. Raise lux_bright_min for brighter in dark rooms. */
+static int lux_bright_min = 30;
+static int lux_bright_max = 200;
 static unsigned int vol_display_until = 0;
 
 /* --- Clock App --- */
@@ -1566,8 +1575,8 @@ static int render_text_scroll(const char *text, unsigned char pixels[8][37],
     int avail = 37 - icon_cols;
     memset(pixels, 0, 8 * 37);
 
-    if (text_width <= avail) {
-        /* Fits — render normally */
+    if (text_width <= avail || scroll_mode == 4) {
+        /* Fits or no-scroll mode — render static (clips if too long) */
         render_text_at(text, pixels, bright, icon_cols);
     } else {
         /* Render text into wide buffer */
@@ -1594,19 +1603,26 @@ static int render_text_scroll(const char *text, unsigned char pixels[8][37],
         int overflow = text_width - avail;
         int off;
 
-        if (overflow <= avail) {
-            /* BOUNCE mode: ping-pong for slightly-too-long text.
-             * Pause 8 frames at each end for readability. */
+        if (scroll_mode == 3 || (scroll_mode == 0 && overflow <= avail)) {
+            /* BOUNCE mode: ping-pong. Pause 8 frames at each end. */
             int pause = 8;
             int cycle = overflow + pause + overflow + pause;
             int pos = scroll_pos % cycle;
-            if (pos < pause) off = 0;                           /* pause at start */
-            else if (pos < pause + overflow) off = pos - pause; /* scroll right */
-            else if (pos < pause + overflow + pause) off = overflow; /* pause at end */
-            else off = overflow - (pos - pause - overflow - pause);  /* scroll back */
+            if (pos < pause) off = 0;
+            else if (pos < pause + overflow) off = pos - pause;
+            else if (pos < pause + overflow + pause) off = overflow;
+            else off = overflow - (pos - pause - overflow - pause);
+        } else if (scroll_mode == 2) {
+            /* Right-to-left continuous scroll */
+            off = scroll_pos % (text_width + 10);
+        } else if (scroll_mode == 1) {
+            /* Left-to-right continuous scroll (reverse direction) */
+            int cycle = text_width + 10;
+            off = cycle - (scroll_pos % cycle) - avail;
+            if (off < 0) off = 0;
         } else {
-            /* WRAP mode: continuous scroll for very long text */
-            off = scroll_pos % (text_width + 10); /* 10px gap before wrap */
+            /* Auto / default: wrap for long text */
+            off = scroll_pos % (text_width + 10);
         }
 
         int r, c;
@@ -2462,12 +2478,11 @@ int main(void) {
                             lux_val = raw2 / 6;
                         }
 
-                        /* Map lux to brightness */
+                        /* Map lux to brightness using configurable range */
                         int bright2;
-                        if (lux_val < 5) bright2 = 15;
-                        else if (lux_val < 50) bright2 = 15 + (lux_val * 65 / 50);
-                        else if (lux_val < 300) bright2 = 80 + ((lux_val - 50) * 47 / 250);
-                        else bright2 = 127;
+                        if (lux_val < 5) bright2 = lux_bright_min;
+                        else if (lux_val < 300) bright2 = lux_bright_min + (lux_val * (lux_bright_max - lux_bright_min) / 300);
+                        else bright2 = lux_bright_max;
 
                         /* Update display brightness if changed */
                         if (bright2 != last_bright) {
@@ -2590,6 +2605,27 @@ int main(void) {
             else if (strncmp(l,"volume",6)==0) cmd_volume_max();
             else if (strncmp(l,"codec",5)==0) cmd_codec_dump();
             else if (strncmp(l,"bright ",7)==0) cmd_bright(l+7);
+            else if (strncmp(l,"scrollmode ",11)==0) {
+                int m = atoi(l+11);
+                if (m >= 0 && m <= 4) {
+                    scroll_mode = m;
+                    char buf[64];
+                    const char *names[] = {"auto","left-to-right","right-to-left","bounce","no-scroll"};
+                    snprintf(buf, sizeof(buf), "Scroll mode: %s (%d)\r\n", names[m], m);
+                    spr(buf);
+                } else spr("scrollmode 0-4: 0=auto 1=ltr 2=rtl 3=bounce 4=noscroll\r\n");
+            }
+            else if (strncmp(l,"luxrange ",9)==0) {
+                int mn = 0, mx = 0;
+                sscanf(l+9, "%d %d", &mn, &mx);
+                if (mn >= 0 && mn <= 255 && mx >= mn && mx <= 255) {
+                    lux_bright_min = mn;
+                    lux_bright_max = mx;
+                    char buf[64];
+                    snprintf(buf, sizeof(buf), "Lux range: %d-%d\r\n", mn, mx);
+                    spr(buf);
+                } else spr("luxrange <min> <max> (0-255)\r\n");
+            }
             else if (strncmp(l,"settime ",8)==0) cmd_settime(l+8);
             else if (strncmp(l,"clock",5)==0) cmd_clock();
             else if (strncmp(l,"anim",4)==0) cmd_anim();
