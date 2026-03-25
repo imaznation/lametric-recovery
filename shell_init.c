@@ -1835,11 +1835,10 @@ static void cmd_carousel(void) {
             if (lx_n == 2) {
                 int raw = (lx_buf[0] | (lx_buf[1] << 8)) & 0x7FFF;
                 int lux = raw / 6, br;
-                if (lux < 5) br = 15;
-                else if (lux < 50) br = 15 + (lux * 65 / 50);
-                else if (lux < 300) br = 80 + ((lux - 50) * 47 / 250);
-                else br = 127;
-                i2c_cmd(0x20, br);
+                if (lux < 5) br = lux_bright_min;
+                else if (lux < 300) br = lux_bright_min + (lux * (lux_bright_max - lux_bright_min) / 300);
+                else br = lux_bright_max;
+                i2c_cmd(0x20, br > 127 ? 127 : br);
                 text_brightness = (br > 63) ? (unsigned char)(br * 2) : (unsigned char)(br * 3);
                 if (text_brightness > 255) text_brightness = 255;
                 if (text_brightness < 30) text_brightness = 30;
